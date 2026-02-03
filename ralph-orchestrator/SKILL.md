@@ -7,6 +7,26 @@ description: Create Ralph orchestrator configurations from implementation plans
 
 Create Ralph orchestrator configurations from implementation plans. Ralph is a hat-based orchestration framework that keeps AI agents in a loop until the task is done.
 
+## IMPORTANT: File Location Rules
+
+**Always create Ralph configuration files in the git repository root**, not in subdirectories:
+
+1. **Find the repo root**: Use `git rev-parse --show-toplevel` to find the repository root
+2. **Create `.ralph/` directory at repo root**: Files go in `<repo-root>/.ralph/`
+3. **Use repo-root-relative paths**: The `prompt_file` in the YAML should be relative to the repo root (e.g., `.ralph/PROMPT-feature.md`)
+
+This ensures `ralph run -c .ralph/config.yaml` works from the repo root regardless of which subdirectory the feature is in.
+
+**Example:** If working in a monorepo with structure:
+```
+my-repo/           <- repo root
+├── .ralph/        <- configs go HERE
+│   ├── my-feature.yaml
+│   └── PROMPT-my-feature.md
+├── backend/
+└── frontend/
+```
+
 ## Running Ralph
 
 ```bash

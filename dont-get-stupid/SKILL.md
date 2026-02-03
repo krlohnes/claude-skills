@@ -82,30 +82,22 @@ FILENAME="i_get_stupified_bak_${TIMESTAMP}.md"
 
 Write the summary to the working directory (where the conversation started).
 
-### Step 4: Create the TODO Entry
-
-Use the TaskCreate tool to add a task at the front of the list:
-
-```
-Subject: Read conversation summary
-Description: Read ${FILENAME} to restore context from previous session
-```
-
-**IMPORTANT**: This task should be created with high priority context so it's addressed first.
-
-### Step 5: Confirm and Clear
+### Step 4: Confirm and Instruct User
 
 1. Confirm the file was written successfully
 2. Show the user the filename and location
 3. Tell the user to run `/clear` to clear the context
+4. Tell the user their first message in the new session should be: `read <filename>`
 
 **DO NOT automatically clear** - let the user verify and clear manually.
+
+**NOTE**: The TODO list is session-scoped and gets cleared with context. The user must manually
+request to read the file in their next session.
 
 ## Example Output
 
 ```
 ✓ Saved conversation summary to: ./i_get_stupified_bak_2026-02-03-14-30-45.md
-✓ Added TODO: "Read i_get_stupified_bak_2026-02-03-14-30-45.md"
 
 Key points preserved:
 - Goal: Implementing attack chain extraction with weighted confidence
@@ -113,7 +105,9 @@ Key points preserved:
 - 5 key files referenced
 - 2 open questions noted
 
-Run /clear to reset context. The summary will guide your next session.
+To continue in a fresh session:
+1. Run /clear
+2. Your first message should be: read i_get_stupified_bak_2026-02-03-14-30-45.md
 ```
 
 ## Notes
