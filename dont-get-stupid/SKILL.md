@@ -87,12 +87,16 @@ Write the summary to the working directory (where the conversation started).
 1. Confirm the file was written successfully
 2. Show the user the filename and location
 3. Tell the user to run `/clear` to clear the context
-4. Tell the user their first message in the new session should be: `read <filename>`
+4. Give the user the exact message to paste as their first message in the new session:
+
+   ```
+   Read <filename> then summarize what you learned and ask me what I want to do next. Do not take any other action.
+   ```
 
 **DO NOT automatically clear** - let the user verify and clear manually.
 
-**NOTE**: The TODO list is session-scoped and gets cleared with context. The user must manually
-request to read the file in their next session.
+**NOTE**: The TODO list is session-scoped and gets cleared with context. The user must explicitly
+instruct Claude to read the file AND ask for direction before acting.
 
 ## Example Output
 
@@ -107,7 +111,9 @@ Key points preserved:
 
 To continue in a fresh session:
 1. Run /clear
-2. Your first message should be: read i_get_stupified_bak_2026-02-03-14-30-45.md
+2. Your first message should be exactly:
+
+   Read i_get_stupified_bak_2026-02-03-14-30-45.md then summarize what you learned and ask me what I want to do next. Do not take any other action.
 ```
 
 ## Notes
