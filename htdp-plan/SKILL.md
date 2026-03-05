@@ -1,5 +1,5 @@
 ---
-name: tdd-plan
+name: htdp-plan
 description: Create a detailed TDD implementation plan from the current conversation context, with assertions that validate correct implementation
 ---
 
@@ -34,7 +34,7 @@ as executable tests, then write the code that makes them pass. Combined:
 
 Accepts optional arguments to narrow scope:
 - No argument: plans based on the full conversation context
-- A description: `/tdd-plan user authentication flow` to focus the plan
+- A description: `/htdp-plan user authentication flow` to focus the plan
 
 ## How This Skill Works
 
