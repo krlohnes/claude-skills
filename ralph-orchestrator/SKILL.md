@@ -469,6 +469,23 @@ stage1 → stage2 → stage3 → done
      ```
    ```
 
+6. **Include explicit completion criteria for every hat**
+   Every hat (not just the final one) MUST have a `### COMPLETION CRITERIA` section with concrete, runnable checks that must pass before the hat advances to the next phase. Without these, the agent may advance prematurely on incomplete or broken work.
+   ```yaml
+   instructions: |
+     ### COMPLETION CRITERIA (all must pass before advancing)
+     ```bash
+     cd backend && npx tsc --noEmit && npm test
+     cd frontend && npm run build && npm run lint
+     test ! -f path/to/deleted/file.js
+     ```
+   ```
+   Good completion criteria are:
+   - **Executable** — bash commands that return non-zero on failure
+   - **Specific** — check that new files exist, old files are deleted, tests pass
+   - **Complete** — cover both backend and frontend if both were changed
+   - **Not just "verify"** — the word "verify" without commands is not a completion criterion
+
 ---
 
 ## Common Event Naming Conventions
