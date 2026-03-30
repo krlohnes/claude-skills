@@ -60,7 +60,25 @@ requirements. But do not stall — ask only about things that would change the d
 or the tests. If you can make a reasonable assumption, state it as an explicit **Assumption**
 at the top of the plan so the user sees it before approving.
 
-#### 2. Define the Data
+#### 2. Survey the Existing Code
+
+Before defining data or writing tests, ground the plan in what actually exists:
+- **Read the types, functions, and interfaces** you'll be extending or calling. Use their
+  actual names from the codebase, not approximations.
+- **Identify what already exists** that can be reused vs. what needs to be created. If a type
+  called `ImageInfo` already exists, the plan says `ImageInfo` — not `RuntimeImage`.
+- **Resolve implementation decisions.** If there are two places code could go, pick one. If
+  you can't pick, state what information you need and ask the user. A plan with "option A or
+  option B" is two half-plans — see Critical Rule 9.
+- **Check test infrastructure.** Does the planned work need test infrastructure that doesn't
+  exist yet? (New database containers, new fixture loaders, new factory functions.) If so,
+  these become a prerequisite phase. Test infrastructure is implementation, not scaffolding —
+  it needs its own verification (e.g., a migration test that proves the schema is created).
+
+This step is distinct from "Identify Conventions" (which is about test style). This is about
+ensuring the plan uses real names, real paths, and real interfaces from the codebase.
+
+#### 3. Define the Data
 
 Before writing any tests, define the data representations:
 - **What information** is being tracked or transformed?
@@ -75,14 +93,20 @@ will be wrong.
 Edge cases are data cases. Empty inputs, nil values, zero values, boundary values — these
 are cases in your data definition, not afterthoughts. List them alongside the happy path.
 
-#### 3. Signature and Purpose
+**Optional and nullable fields are data cases.** For each field in input data: is it required
+or optional? If optional (pointer type, omitempty, may be empty string), define the behavior
+when it's absent. "K8sData is nil" is not an edge case you discover later — it's a first-class
+data case that appears in the data definitions and drives a test. For every optional field,
+the plan must state what happens when it's missing.
+
+#### 4. Signature and Purpose
 
 For each function or component the plan will cover, state:
 - **What it consumes** -- the input types and their meaning
 - **What it produces** -- the output types and their meaning
 - **Why** -- a one-sentence purpose statement
 
-#### 4. Identify Conventions
+#### 5. Identify Conventions
 
 Read existing test files in the project and identify:
 - What kinds of tests are needed (unit, integration, contract)
@@ -215,6 +239,10 @@ a data case uncovered.
 8. **Test names describe the scenario.** `TestCalculate_EmptySignals` tells you what data case
    is being tested. `TestCalculate2` does not. Name tests after the data case or behavior they
    verify.
+
+9. **No unresolved decisions in the plan.** If you write "option A or option B," you haven't
+   finished planning. Pick one and state why. If you genuinely can't pick without more
+   information, state what you need and ask the user. A plan with "or" in it is two half-plans.
 
 ## Anti-Patterns to Avoid
 
@@ -362,6 +390,132 @@ Do not start until calculator_test.go exists on disk.
 #### Verification
 cd internal/scoring && go test -v -run TestCalculate
 Expected: 5 tests pass, 0 failures
+```
+
+## Example Phase (Integration Test)
+
+The first example shows a pure unit test. Most real work also involves integration — parsing
+events, writing to databases, verifying rows. Here's what a database integration test phase
+looks like. The same rules apply: data definitions, signatures, concrete assertions.
+
+```
+## Phase 3: Counter Batch Write to Database
+
+### What We're Proving
+The batch write function persists runtime counter entries to the database with correct
+column mapping, handles nil optional fields without panicking, and treats empty batches
+as a no-op.
+
+### Data Definitions
+- RuntimeEventRollupEvent: a batch of counter entries from one sensor window
+  - K8sData (*K8sData): optional, may be nil for non-Kubernetes sensors
+  - Image (ImageInfo): has Digest field, may be empty string
+  - Entries ([]RuntimeEventRollupEntry): the counter rows, may be empty
+  - Cases and examples:
+    - Happy path (3 entries, all fields populated): see test below
+    - Empty entries: Entries: []RuntimeEventRollupEntry{}
+    - Nil K8sData: K8sData: nil → namespace column gets ""
+    - Nil ProcessChain on entry: ProcessChain: nil → stored as empty array {}
+
+### Signature and Purpose
+- (*Database).WriteRuntimeCounters(ctx, tenant string, event *RuntimeEventRollupEvent) error
+  Batch-insert all entries from one rollup event into the runtime_counters table.
+
+### Step 1: Write the Tests
+
+#### Test File(s)
+- `internal/timescaledb/runtime_counters_test.go`
+
+#### Tests & Assertions
+func TestWriteRuntimeCounters_Success(t *testing.T) {
+    db, cleanup := SetupTestTimescaleDBPool(t)
+    defer cleanup()
+
+    event := &gateway.RuntimeEventRollupEvent{
+        SensorID:      "sensor-1",
+        Hostname:       "node-1",
+        Image:          gateway.ImageInfo{Digest: "sha256:abc123"},
+        Service:        gateway.RuntimeService{Name: "frontend"},
+        K8sData:        &gateway.K8sData{PodNamespace: "production"},
+        PeriodStartNs:  uint64(time.Date(2026, 3, 30, 12, 0, 0, 0, time.UTC).UnixNano()),
+        Entries: []gateway.RuntimeEventRollupEntry{
+            {Comm: "nginx", SyscallOrFunction: "read", Classification: "file_access",
+             ProcessChain: []string{"init", "nginx"}, Count: 100},
+            {Comm: "nginx", SyscallOrFunction: "write", Classification: "file_access",
+             ProcessChain: []string{"init", "nginx"}, Count: 50},
+        },
+    }
+
+    err := db.WriteRuntimeCounters(t.Context(), "test-tenant", event)
+    require.NoError(t, err)
+
+    var count int
+    err = db.Pool.QueryRow(t.Context(),
+        "SELECT count(*) FROM runtime_counters WHERE customer = $1", "test-tenant").Scan(&count)
+    require.NoError(t, err)
+    assert.Equal(t, 2, count)
+
+    var comm, digest, namespace string
+    var rowCount int64
+    err = db.Pool.QueryRow(t.Context(),
+        `SELECT comm, image_digest, namespace, count FROM runtime_counters
+         WHERE customer = $1 AND syscall_or_function = 'read'`, "test-tenant",
+    ).Scan(&comm, &digest, &namespace, &rowCount)
+    require.NoError(t, err)
+    assert.Equal(t, "nginx", comm)
+    assert.Equal(t, "sha256:abc123", digest)
+    assert.Equal(t, "production", namespace)
+    assert.Equal(t, int64(100), rowCount)
+}
+
+func TestWriteRuntimeCounters_EmptyEntries(t *testing.T) {
+    db, cleanup := SetupTestTimescaleDBPool(t)
+    defer cleanup()
+
+    event := &gateway.RuntimeEventRollupEvent{Entries: nil}
+    err := db.WriteRuntimeCounters(t.Context(), "test-tenant", event)
+    require.NoError(t, err)
+
+    var count int
+    err = db.Pool.QueryRow(t.Context(),
+        "SELECT count(*) FROM runtime_counters").Scan(&count)
+    require.NoError(t, err)
+    assert.Equal(t, 0, count)
+}
+
+func TestWriteRuntimeCounters_NilK8sData(t *testing.T) {
+    db, cleanup := SetupTestTimescaleDBPool(t)
+    defer cleanup()
+
+    event := &gateway.RuntimeEventRollupEvent{
+        K8sData: nil, // no Kubernetes metadata
+        Entries: []gateway.RuntimeEventRollupEntry{
+            {Comm: "app", SyscallOrFunction: "read", Count: 1},
+        },
+    }
+
+    err := db.WriteRuntimeCounters(t.Context(), "test-tenant", event)
+    require.NoError(t, err)
+
+    var namespace string
+    err = db.Pool.QueryRow(t.Context(),
+        "SELECT namespace FROM runtime_counters WHERE customer = $1", "test-tenant",
+    ).Scan(&namespace)
+    require.NoError(t, err)
+    assert.Equal(t, "", namespace) // empty string, not NULL, not panic
+}
+
+### Step 2: Implement
+
+Do not start until runtime_counters_test.go exists on disk.
+
+#### Implementation Scope
+- `internal/timescaledb/runtime_counters.go`: WriteRuntimeCounters using pgx.CopyFrom
+- Nil-safe field access: K8sData?.PodNamespace defaults to ""
+
+#### Verification
+cd internal/timescaledb && go test -v -run TestWriteRuntimeCounters
+Expected: 3 tests pass, 0 failures
 ```
 
 ## Notes
