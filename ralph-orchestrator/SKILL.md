@@ -331,7 +331,274 @@ hats:
 
 ---
 
-### 6. Research & Synthesis
+### 6. Contract-First Pipeline
+Specifications must be approved before implementation proceeds, with verification gates.
+
+```yaml
+event_loop:
+  starting_event: "spec.start"
+  completion_promise: "LOOP_COMPLETE"
+
+hats:
+  spec_writer:
+    name: "📋 Spec Writer"
+    description: "Drafts specifications from requirements"
+    triggers: ["spec.start", "spec.rejected"]
+    publishes: ["spec.ready"]
+    instructions: |
+      Draft a clear specification from the requirements.
+      If rejected, address reviewer feedback.
+      Publish spec.ready when the spec is complete.
+
+  spec_reviewer:
+    name: "🔍 Spec Reviewer"
+    description: "Reviews specs for completeness and correctness"
+    triggers: ["spec.ready"]
+    publishes: ["spec.approved", "spec.rejected"]
+    instructions: |
+      Review the specification critically:
+      - Is it complete? Are edge cases covered?
+      - Is it unambiguous? Could it be misinterpreted?
+      - Is it testable? Can we verify conformance?
+
+      If issues: publish spec.rejected with specific feedback
+      If solid: publish spec.approved
+
+  implementer:
+    name: "🔧 Implementer"
+    description: "Implements according to approved spec"
+    triggers: ["spec.approved", "spec.violated"]
+    publishes: ["implementation.done"]
+    instructions: |
+      Implement exactly what the approved spec describes.
+      If spec.violated, fix the non-conforming code.
+      Publish implementation.done when complete.
+
+  verifier:
+    name: "✅ Verifier"
+    description: "Verifies implementation conforms to spec"
+    triggers: ["implementation.done"]
+    publishes: ["task.complete", "spec.violated"]
+    instructions: |
+      Verify the implementation matches the spec exactly.
+      Check every requirement and edge case.
+
+      If conformant: output LOOP_COMPLETE
+      If violations: publish spec.violated with details
+```
+
+**Use for:** High-stakes changes, API contracts, spec-driven development
+
+---
+
+### 7. Hypothesis-Driven Investigation
+Applies the scientific method to debugging through systematic observation, theorization, and experimentation.
+
+```yaml
+event_loop:
+  starting_event: "science.start"
+  completion_promise: "LOOP_COMPLETE"
+
+hats:
+  observer:
+    name: "🔬 Observer"
+    description: "Gathers symptoms and evidence about the problem"
+    triggers: ["science.start", "hypothesis.rejected"]
+    publishes: ["observation.made"]
+    instructions: |
+      Gather evidence systematically:
+      1. Reproduce the issue
+      2. Collect logs, stack traces, error messages
+      3. Note environmental conditions
+      4. Document what works vs what doesn't
+
+      If hypothesis.rejected, gather NEW evidence.
+      Publish observation.made with detailed findings.
+
+      DON'T: Guess at fixes. Modify code.
+
+  theorist:
+    name: "🧠 Theorist"
+    description: "Forms testable hypotheses from observations"
+    triggers: ["observation.made"]
+    publishes: ["hypothesis.formed"]
+    instructions: |
+      Form a testable hypothesis from the observations:
+      1. Review all evidence
+      2. Identify possible root causes
+      3. Rank by likelihood
+      4. Formulate the most likely as a testable hypothesis
+      5. Describe how to confirm or reject it
+
+      Publish hypothesis.formed with the hypothesis and test plan.
+
+  experimenter:
+    name: "🧪 Experimenter"
+    description: "Tests hypotheses with targeted experiments"
+    triggers: ["hypothesis.formed"]
+    publishes: ["hypothesis.confirmed", "hypothesis.rejected"]
+    instructions: |
+      Test the hypothesis with a targeted experiment:
+      1. Follow the test plan from the theorist
+      2. Run the experiment
+      3. Document results
+
+      If confirmed: publish hypothesis.confirmed with evidence
+      If rejected: publish hypothesis.rejected with what was ruled out
+
+  fixer:
+    name: "🛠️ Fixer"
+    description: "Implements fix for confirmed root cause"
+    triggers: ["hypothesis.confirmed"]
+    publishes: ["fix.applied"]
+    instructions: |
+      Fix the confirmed root cause:
+      1. Implement the targeted fix
+      2. Add a regression test
+      3. Verify the original issue is resolved
+      4. Output LOOP_COMPLETE
+```
+
+**Use for:** Complex bugs, root cause analysis, debugging where the cause isn't obvious
+
+---
+
+### 8. Coordinator-Specialist (Fan-Out)
+A coordinator analyzes work and delegates to independent specialists, consolidating results.
+
+```yaml
+event_loop:
+  starting_event: "gap.start"
+  completion_promise: "LOOP_COMPLETE"
+
+hats:
+  analyzer:
+    name: "🎯 Analyzer"
+    description: "Coordinates work by delegating to specialists and consolidating results"
+    triggers: ["gap.start", "verify.complete", "report.complete"]
+    publishes: ["analyze.spec", "verify.request", "report.request"]
+    instructions: |
+      You are the coordinator. Analyze the work and delegate:
+
+      On gap.start:
+        1. Break down the work into specialist tasks
+        2. Publish analyze.spec to kick off verification
+
+      On verify.complete:
+        1. Review verification results
+        2. If more verification needed: publish verify.request
+        3. If ready for reporting: publish report.request
+
+      On report.complete:
+        1. Review the report
+        2. If all work is done: output LOOP_COMPLETE
+        3. If gaps remain: publish verify.request
+
+  verifier:
+    name: "🔍 Verifier"
+    description: "Independently verifies specific aspects of the work"
+    triggers: ["analyze.spec", "verify.request"]
+    publishes: ["verify.complete"]
+    instructions: |
+      Verify the specific aspect assigned by the analyzer.
+      1. Check the code/spec/artifact thoroughly
+      2. Document findings
+      3. Publish verify.complete with results
+
+  reporter:
+    name: "📊 Reporter"
+    description: "Generates reports and summaries from verified findings"
+    triggers: ["report.request"]
+    publishes: ["report.complete"]
+    instructions: |
+      Generate a comprehensive report from the findings:
+      1. Summarize all verified results
+      2. Highlight gaps or issues
+      3. Provide recommendations
+      4. Publish report.complete
+```
+
+**Use for:** Gap analysis, audit workflows, work that decomposes into independent specialist tasks
+
+---
+
+### 9. Adaptive Entry Point
+A bootstrapping coordinator detects input type and routes to the appropriate workflow.
+
+```yaml
+event_loop:
+  starting_event: "build.start"
+  completion_promise: "LOOP_COMPLETE"
+
+hats:
+  planner:
+    name: "📋 Planner"
+    description: "Analyzes input context and plans work items"
+    triggers: ["build.start", "task.complete"]
+    publishes: ["tasks.ready"]
+    instructions: |
+      Analyze the input and plan the work:
+
+      On build.start:
+        1. Detect input type (ticket, spec, bug report, etc.)
+        2. Break down into ordered tasks
+        3. Publish tasks.ready with the first task
+
+      On task.complete:
+        1. Check if more tasks remain
+        2. If yes: publish tasks.ready with the next task
+        3. If all done: output LOOP_COMPLETE
+
+  builder:
+    name: "🔧 Builder"
+    description: "Implements the current task"
+    triggers: ["tasks.ready", "review.rejected", "finalization.failed"]
+    publishes: ["review.ready", "build.blocked"]
+    instructions: |
+      Implement the current task:
+      1. Read the task description
+      2. Implement the changes
+      3. Run local checks
+      4. Publish review.ready
+
+      If review.rejected: address feedback and resubmit
+      If finalization.failed: fix the issue and resubmit
+      If stuck: publish build.blocked with details
+
+  critic:
+    name: "🔍 Critic"
+    description: "Reviews implementation quality"
+    triggers: ["review.ready"]
+    publishes: ["review.passed", "review.rejected"]
+    instructions: |
+      Review the implementation:
+      - Correctness, edge cases
+      - Code quality, style
+      - Test coverage
+
+      If issues: publish review.rejected with feedback
+      If good: publish review.passed
+
+  finalizer:
+    name: "✅ Finalizer"
+    description: "Runs final checks and marks task complete"
+    triggers: ["review.passed"]
+    publishes: ["task.complete", "finalization.failed"]
+    instructions: |
+      Run final verification:
+      1. Run full test suite
+      2. Check for regressions
+      3. Verify acceptance criteria
+
+      If all pass: publish task.complete
+      If failures: publish finalization.failed with details
+```
+
+**Use for:** Multi-format input handling, task decomposition, adaptive workflows
+
+---
+
+### 10. Research & Synthesis
 Information gathering without code changes.
 
 ```yaml
@@ -494,10 +761,14 @@ stage1 → stage2 → stage3 → done
 |---------|--------|
 | Pipeline | `stage1.start`, `stage2.start`, `pipeline.complete` |
 | Review | `review.ready`, `review.approved`, `review.rejected` |
-| Build | `build.task`, `build.done`, `build.blocked` |
+| Build | `build.start`, `build.task`, `build.done`, `build.blocked` |
 | Test | `test.written`, `test.passing`, `test.failing` |
 | TDD | `tdd.start`, `refactor.done`, `cycle.complete` |
+| Spec/Contract | `spec.start`, `spec.ready`, `spec.approved`, `spec.rejected`, `spec.violated` |
 | Security | `security.review`, `vulnerability.found`, `fix.applied` |
+| Investigation | `science.start`, `observation.made`, `hypothesis.formed`, `hypothesis.confirmed`, `hypothesis.rejected` |
+| Coordination | `gap.start`, `analyze.spec`, `verify.request`, `verify.complete`, `report.request`, `report.complete` |
+| Adaptive | `build.start`, `tasks.ready`, `task.complete`, `finalization.failed` |
 | Research | `research.start`, `research.finding`, `research.followup` |
 
 ---
