@@ -72,6 +72,26 @@ from `--help` for each step; the *shape* is fixed.
 Your loop at every step is: **propose → submit to the gate → read the response → fix the real gap →
 resubmit.** Never: propose → declare done.
 
+### The operating model: satisfy as you go
+
+**gantry drives the build. It is not a final gate you run after the work is done.**
+
+Carve the spec into per-requirement leaves first. Then work **one leaf at a time**: take a single
+leaf, author its clause, write *just enough implementation to discharge that leaf*, earn its green,
+and move to the next. Each piece of code you write exists to discharge a claim you have already
+established. The carve is your worklist; let it drive the order of the work.
+
+You should **never** accumulate a large body of unverified implementation and submit it to gantry at
+the end. When a gate rejects work that was built all at once and verified last, the implementation
+was written toward an idea of "done" rather than toward the clauses — so the fix is a large, late
+rewrite. Satisfying each leaf as you go keeps every increment small and grounded: a rejection is
+local to one leaf and cheap to fix, and there is no end-of-run rewrite. The friction lands
+continuously and small, instead of all at once and large.
+
+The steps below (carve → clause → checker → discharge) describe the gates each leaf passes through —
+**not** a phase order where you carve everything, then clause everything, then implement everything.
+Run the per-leaf loop to completion for one leaf before opening the next.
+
 ### 0. Pin the gate model
 The LLM-backed gate roles shell out to a CLI; pin the model explicitly (e.g.
 `ANTHROPIC_MODEL=<model-id>` on every invocation that triggers an adversary/narrower/source), or
@@ -142,13 +162,41 @@ Report exactly what discharge returns. Do not translate Blocked into "almost don
 `discharge` gates it. The implementation is the thing under test, never something you mark complete
 yourself.
 
+Write the implementation **per leaf**, just enough to discharge the leaf you are on — not the whole
+spec at once. The checker for the leaf targets the public API the impl must expose; that, plus the
+clause, is the entire contract that increment of code is written toward. When the leaf greens, move
+on. Resist the pull to "get the implementation mostly done" ahead of the carve and then reconcile
+later; that is the all-at-once anti-pattern, and it is what turns a rejection into a rewrite.
+
 ---
 
 ## Layer 4 — Anti-patterns (you will reach for these by default; don't)
 
-- **Writing the implementation, then declaring done.** The impl is discharged *against* the gates.
-  → Carve and clause first; the clause tells you what the impl must satisfy. Then discharge; report
-  the verdict, never "done."
+**Anti-pattern: writing the full implementation, then running it through gantry as a final check.**
+You will build toward an idea of "done" and only then submit the whole body of code to the gates.
+When a gate rejects work that was built all at once and verified last, the implementation was written
+toward "done" rather than toward the clauses — so the fix is a large, late rewrite.
+
+*Instead:* let the carve drive the work; discharge each leaf as you build it. Take one leaf, clause
+it, write just enough impl to discharge *that* leaf, earn the green, move on. Each increment of code
+exists to discharge a claim you already established. A rejection is then local to one leaf and cheap
+to fix, and there is no end-of-run rewrite — the friction lands continuously and small instead of all
+at once and large.
+
+**Anti-pattern: dropping requirements to manufacture a green.** When a clause or coverage gate fails,
+you will reach for re-scoping — drop or defer the failing requirements so the remaining set
+discharges clean — and frame it as the "cleanest honest green": re-carve to what the implementation
+actually satisfies, record the rest as out-of-scope. **It is not honest.** Dropping an in-scope
+requirement to produce a green is a false green wearing a clean shirt: the green now means *less* than
+the reader thinks it does, and the dropped guarantee is silently gone. A failed gate is a signal
+about the implementation or the clause — never a license to move the goalposts to where the work
+already landed.
+
+*Instead:* treat a failed gate as "fix the work or report the wall." The only honest moves are to fix
+the implementation to satisfy the requirement, or take the located Blocked and report it. Leave the
+requirement set alone unless the *spec itself* — not the gate outcome — says a requirement was
+wrongly included.
+
 - **Gaming an adversary rejection.** Rewording a clause/checker to slip past the adversary instead
   of satisfying the requirement. → The counterexample names a *real* gap. Fix the actual hole.
 - **Inventing requirements.** Adding obligations the spec didn't state because a default seems
@@ -222,13 +270,17 @@ commands:
 ## The honest test of your work
 
 You are operating this skill correctly if you:
-- carve **before** implementing;
+- carve **before** implementing, then work **one leaf at a time** — clause it, write just enough impl
+  to discharge it, earn its green, move on (never accumulate unverified impl for a final check);
 - **draft** (never author-and-accept) clauses and checkers;
 - run **discharge** instead of declaring done;
 - respond to an adversary rejection by **fixing the real gap**;
 - **report** a Blocked discharge instead of faking around it;
+- respond to a failed gate by **fixing the work or reporting the wall** — never by dropping the
+  in-scope requirement to make the remainder green;
 - refuse to **invent requirements** or **assume-away** with an axiom;
 - report a floored green **with its modulo**.
 
-If instead you write the implementation and declare done, you've defeated the system — and used this
-document as a command reference instead of the discipline it is.
+If instead you write the whole implementation and declare done — or re-scope the requirements to fit
+what you built — you've defeated the system, and used this document as a command reference instead of
+the discipline it is.
